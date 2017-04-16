@@ -1,0 +1,27 @@
+{
+  "name": "get-gospel-resources",
+  "version": "1.0.0",
+  "description": "抓取福音影视网的资源",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PraiseSong/GetGospelResources.git"
+  },
+  "keywords": [
+    "nodejs爬取数据"
+  ],
+  "author": "颂赞",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/PraiseSong/GetGospelResources/issues"
+  },
+  "homepage": "https://github.com/PraiseSong/GetGospelResources#readme",
+  "dependencies": {
+    "cheerio": "^0.22.0",
+    "curl": "^0.1.4",
+    "urlencode": "^1.1.0"
+  }
+}
