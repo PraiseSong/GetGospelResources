@@ -73,21 +73,22 @@ function getPageDataSuccess(data) {
         } else {
           resultData.files.push(data[index]);
           fullPath = urlencode.decode(resourcesDir + (data[index].parent ?  '/' + data[index].parent : '') + '/' + pathObj.base);
-          fs.exists(fullPath, (exists) => {
-            if (exists) {
-              // 如果本地有历史文件就删除
-              fs.unlink(fullPath, () => {
-                warnTip('已删除本地 ' + fullPath);
-                downloadFile(host + data[index].url , fullPath);
-              });
-            } else {
-              downloadFile(host + data[index].url , fullPath);
-            }
-          });
+          if (!isLoaded(fullPath)) {
+            fs.exists(fullPath, (exists) => {
+                if (exists) {
+                      // 如果本地有历史文件就删除
+                      fs.unlink(fullPath, () => {
+                          warnTip('已删除本地 ' + fullPath);
+                          downloadFile(host + data[index].url , fullPath);
+                      });
+                } else {
+                      downloadFile(host + data[index].url , fullPath);
+                }
+            });
+          }
         }
       })(i);
       k++;
-      break;
   }
 }
 
@@ -122,7 +123,19 @@ function writeLog(fileName) {
     errorTip('写入日志失败');
   }
 }
-writeLog('/home/user/dir/file.txt');
+
+function isLoaded(fullPath) {
+  var existLogs = fs.readFileSync( logsFile, 'utf-8') ? JSON.parse(fs.readFileSync( logsFile)) : null;
+  if(!existLogs) {
+    return false;
+  }
+  if (existLogs.indexOf(fullPath) < 0) {
+    return false;
+  } else {
+    return true;
+  }
+}
+
 function getPageData(url, parent) {
   infoTip('准备抓取【' + (host + urlencode.decode(url)) + '】的数据');
   var resources = {};
