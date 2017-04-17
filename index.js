@@ -10,14 +10,22 @@ const curl = require('curl');
 const url = require('url');
 const path = require('path');
 const fs = require('fs');
-var urlencode = require('urlencode');
+const urlencode = require('urlencode');
+const colors = require( "colors")
 
 // 福音影视网下载目录
 var host = 'https://downs.fuyin.tv';
 // 福音证道
 var pageUrl = '/pcdown/06%E7%A6%8F%E9%9F%B3%E8%AF%81%E9%81%93/';
 // 存储的目录
-var resourcesDir = './resources';
+var resourcesDir = '/Volumes/MY PASSPORT/Video-from-fuyinTV-with-nodejs';
+// 解析后的数据
+var resultData = {
+  files: [],
+  dirs: []
+};
+// 日志
+var logsFile = 'logs.json';
 
 // Utility function that downloads a URL and invokes
 // callback with the data.
@@ -35,8 +43,11 @@ function download(url, callback) {
   });
 }
 
+var k = 0;
 function getPageDataSuccess(data) {
-  console.log('解析成功，获取到以下资源：' + '\n');
+  infoTip('当前的数据结构：');
+  infoTip(JSON.stringify(data, null, '\t'));
+  infoTip('获取到以下资源：');
   for (let i in data) {
       (function (index){
         var pathObj = path.parse(data[index].url);
@@ -44,35 +55,44 @@ function getPageDataSuccess(data) {
         var fullPath;
         // 是个目录git init
         if (!pathObj.ext) {
+          resultData.dirs.push(data[index]);
           fullPath = resourcesDir + (data[index].parent ?  '/' + data[index].parent : '') + '/' + dirName;
           fs.exists(fullPath, (exists) => {
               if (!exists) {
                 fs.mkdir(fullPath, () => {
-                    console.log('文件夹：' + (data[index].parent ? data[index].parent : '') + '/' + dirName + ' ，本地已创建成功' + '\n');
+                  successTip('' + k + '：文件夹：【' + (data[index].parent ? data[index].parent : '') + '/' + dirName + '】本地已创建成功');
+                  infoTip('开始获取该文件夹中的数据...');
+                  getPageData(data[index].url, (data[index].parent ? data[index].parent + '/' : '') + dirName);
                 });
               } else {
-                console.log('文件夹：' + (data[index].parent ? data[index].parent : '') + '/' + dirName + ' ，已存在' + '\n');
+                  warnTip('' + k + '：文件夹：【' + (data[index].parent ? data[index].parent : '') + '/' + dirName + '】已存在');
+                  infoTip('开始获取该文件夹中的数据...');
+                  getPageData(data[index].url, (data[index].parent ? data[index].parent + '/' : '') + dirName);
               }
-              console.log('开始获取该文件夹中的数据...\n');
-              getPageData(data[i].url, (data[index].parent ? data[index].parent + '/' : '') + dirName);
           });
         } else {
+          resultData.files.push(data[index]);
           fullPath = urlencode.decode(resourcesDir + (data[index].parent ?  '/' + data[index].parent : '') + '/' + pathObj.base);
           fs.exists(fullPath, (exists) => {
             if (exists) {
               // 如果本地有历史文件就删除
-              fs.unlink(fullPath);
+              fs.unlink(fullPath, () => {
+                warnTip('已删除本地 ' + fullPath);
+                downloadFile(host + data[index].url , fullPath);
+              });
+            } else {
+              downloadFile(host + data[index].url , fullPath);
             }
-            downloadFile(host + data[index].url , fullPath);
           });
         }
       })(i);
+      k++;
       break;
   }
 }
 
 function downloadFile(mp4Url, filepath, callback) {
-  console.log('正在下载' + filepath + '...\n');
+  infoTip('正在下载【' + filepath + '】');
   var file = fs.createWriteStream(filepath);
 
   https.get(mp4Url, function(res) {
@@ -80,18 +100,37 @@ function downloadFile(mp4Url, filepath, callback) {
       file.write(data);
     }).on('end', function() {
       file.end();
-      console.log(filepath + '下载完成\n');
+      successTip(filepath + '下载完成');
+      writeLog(filepath);
     });
   });
 }
 
+function writeLog(fileName) {
+  // 记录日志
+  try {
+    var existLogs = fs.readFileSync( logsFile, 'utf-8') ? JSON.parse(fs.readFileSync( logsFile)) : null;
+    if(!existLogs) {
+      existLogs = [];
+    }
+    if (existLogs && existLogs.indexOf(fileName) < 0) {
+      existLogs.push(fileName);
+    }
+    fs.writeFileSync(logsFile, JSON.stringify(existLogs));
+    successTip('写入日志成功');
+  } catch (e) {
+    errorTip('写入日志失败');
+  }
+}
+writeLog('/home/user/dir/file.txt');
 function getPageData(url, parent) {
+  infoTip('准备抓取【' + (host + urlencode.decode(url)) + '】的数据');
   var resources = {};
-  download(host+url, function(data) {
+  download(host + url, function(data) {
     if (data) {
-      console.log('获取资源成功！' + urlencode.decode(host+url) + '\n');
+      successTip('抓取成功');
       const $ = cheerio.load(data);
-      console.log('开始解析页面...' + '\n');
+      infoTip('开始解析');
       $('a').each(function (k, v) {
         // 过滤不相关的链接
         if ($(v).text() != '[To Parent Directory]') {
@@ -102,11 +141,24 @@ function getPageData(url, parent) {
           }
         }
       });
+      successTip('解析成功！');
       getPageDataSuccess(resources);
     } else {
-      console.log('error');
+      errorTip('抓取失败');
     }
   });
 }
-getPageData(pageUrl);
 
+function infoTip(text){
+  console.log(text + '\n');
+}
+function successTip(text){
+  console.log(text.green + '\n');
+}
+function warnTip(text){
+  console.log(text.yellow + '\n');
+}
+function errorTip(text){
+  console.log(text.red + '\n');
+}
+getPageData(pageUrl);

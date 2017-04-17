@@ -21,6 +21,7 @@
   "homepage": "https://github.com/PraiseSong/GetGospelResources#readme",
   "dependencies": {
     "cheerio": "^0.22.0",
+    "colors": "^1.1.2",
     "curl": "^0.1.4",
     "urlencode": "^1.1.0"
   }
