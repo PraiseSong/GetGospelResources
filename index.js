@@ -18,14 +18,16 @@ var host = 'https://downs.fuyin.tv';
 // 福音证道
 var pageUrl = '/pcdown/06%E7%A6%8F%E9%9F%B3%E8%AF%81%E9%81%93/';
 // 存储的目录
-var resourcesDir = '/Volumes/MY PASSPORT/Video-from-fuyinTV-with-nodejs';
+var resourcesDir = './resources';//'/Volumes/MY PASSPORT/Video-from-fuyinTV-with-nodejs';
 // 解析后的数据
 var resultData = {
   files: [],
   dirs: []
 };
-// 日志
-var logsFile = 'logs.json';
+// 下载文件日志
+var loadedFilesLogs = 'loadedFiles.json';
+// 下载目录的日志
+var loadedDirLogs = 'loadedDir.json';
 
 // Utility function that downloads a URL and invokes
 // callback with the data.
@@ -43,88 +45,122 @@ function download(url, callback) {
   });
 }
 
+var hasWait = false;// 是否有等待的对列
 var k = 0;
-var kMax = 4; // 允许同时下载目录的最大数量
+var kMax = 10; // 允许同时下载目录的最大数量
 var loadingCount = 0;
-var loadingFileMax = 8; // 允许同时下载文件的最大数量
+var loadingFileMax = 6; // 允许同时下载文件的最大数量
 var si = null;// 轮询查询
+var currentUrl = null;// 当前正在等待的下载地址
 function getPageDataSuccess(data) {
-  if (k > kMax) {
-    warnTip('任务数量' + k + '，已达上限，加入等待队列');
-    si = setTimeout(function() {
-      getPageData(pageUrl);
-    }, 1000 * 60 * 15);
+  var keys = Object.keys(data);
+  if (!keys || keys.length <= 0) {
     return;
   }
-
+  // while (keys[keys.length - 1]) {
+  //   if (hasWait) {
+  //     warnTip('有等待的对列，暂停处理');
+  //     break;
+  //   }
+  //   var targetData = data[keys[0]];
+  //   var pathObj = path.parse(targetData.url);
+  //   var dirName = urlencode.decode(pathObj.base, 'utf-8');
+  //   var fullPath;
+  //   // 是个目录
+  //   if (!pathObj.ext) {
+  //     resultData.dirs.push(targetData);
+  //     fullPath = resourcesDir + (targetData.parent ?  '/' + targetData.parent : '') + '/' + dirName;
+  //     // 如果当前目录不存在
+  //     if (!fs.existsSync(fullPath)) {
+  //       fs.mkdirSync(fullPath);
+  //       successTip('' + k + '：文件夹：【' + (targetData.parent ? targetData.parent : '') + '/' + dirName + '】本地已创建成功');
+  //     } else {
+  //       warnTip('' + k + '：文件夹：【' + (targetData.parent ? targetData.parent : '') + '/' + dirName + '】已存在');
+  //     }
+  //     infoTip('开始获取该文件夹中的数据...');
+  //     getPageData(targetData.url, (targetData.parent ? targetData.parent + '/' : '') + dirName);
+  //   }
+  //   keys.splice(keys[keys.length - 1], 1);
+  // }
+  // return;
   // infoTip('当前的数据结构：');
   // infoTip(JSON.stringify(data, null, '\t'));
-  infoTip('获取到以下资源：');
-  for (let i in data) {
-      (function (index){
-        var pathObj = path.parse(data[index].url);
-        var dirName = urlencode.decode(pathObj.base, 'utf-8');
-        var fullPath;
-        // 是个目录
-        if (!pathObj.ext) {
-          resultData.dirs.push(data[index]);
-          fullPath = resourcesDir + (data[index].parent ?  '/' + data[index].parent : '') + '/' + dirName;
-          fs.exists(fullPath, (exists) => {
-              if (!exists) {
-                fs.mkdir(fullPath, () => {
-                  successTip('' + k + '：文件夹：【' + (data[index].parent ? data[index].parent : '') + '/' + dirName + '】本地已创建成功');
-                  infoTip('开始获取该文件夹中的数据...');
-                  getPageData(data[index].url, (data[index].parent ? data[index].parent + '/' : '') + dirName);
-                });
-              } else {
-                warnTip('' + k + '：文件夹：【' + (data[index].parent ? data[index].parent : '') + '/' + dirName + '】已存在');
-                infoTip('开始获取该文件夹中的数据...');
-                getPageData(data[index].url, (data[index].parent ? data[index].parent + '/' : '') + dirName);
-              }
-          });
-          if (k <= kMax) {
-            k++;
-          }
+  // infoTip('获取到以下资源：');
+  // for (let i in data) {
+  //     if (hasWait) {
+  //       warnTip('有等待的对列，暂停处理');
+  //       break;
+  //     }
+  //     (function (index){
+
+      // })(i);
+  // }
+  function process (){
+    if (si) {
+      return;
+    }
+    if (!keys || keys.length <= 0) {
+      return;
+    }
+    var pathObj = path.parse(data[keys[0]].url);
+    var dirName = urlencode.decode(pathObj.base, 'utf-8');
+    var fullPath;
+    // 是个目录
+    if (!pathObj.ext) {
+      resultData.dirs.push(data[keys[0]]);
+      fullPath = resourcesDir + (data[keys[0]].parent ?  '/' + data[keys[0]].parent : '') + '/' + dirName;
+      if (!isLoaded(fullPath)) {
+        // infoTip('开始获取该文件夹中的数据...');
+        if (!fs.existsSync(fullPath)) {
+          fs.mkdirSync(fullPath);
+          writeLog(fullPath);
+          successTip('' + k + '：文件夹：【' + (data[keys[0]].parent ? data[keys[0]].parent : '') + '/' + dirName + '】本地已创建成功');
         } else {
-          resultData.files.push(data[index]);
-          fullPath = urlencode.decode(resourcesDir + (data[index].parent ?  '/' + data[index].parent : '') + '/' + pathObj.base);
-          if (!isLoaded(fullPath)) {
-            fs.exists(fullPath, (exists) => {
-                if (exists) {
-                  // 如果本地有历史文件就删除
-                  fs.unlink(fullPath, () => {
-                      warnTip('已删除本地 ' + fullPath);
-                      downloadFile(host + data[index].url , fullPath);
-                  });
-                } else {
-                  downloadFile(host + data[index].url , fullPath);
-                }
-            });
-            if (k <= kMax) {
-              k++;
-            }
-          } else {
-            if (loadingCount > 0) {
-              loadingCount--;
-            }
-            if (k > 0) {
-              k--;
-            }
-          }
+          warnTip('' + k + '：文件夹：【' + (data[keys[0]].parent ? data[keys[0]].parent : '') + '/' + dirName + '】已存在');
+          writeLog(fullPath);
         }
-      })(i);
+      }
+      if (k > 0) {
+        k--;
+      }
+      getPageData(data[keys[0]].url, (data[keys[0]].parent ? data[keys[0]].parent + '/' : '') + dirName);
+    } else {
+      resultData.files.push(data[keys[0]]);
+      fullPath = urlencode.decode(resourcesDir + (data[keys[0]].parent ?  '/' + data[keys[0]].parent : '') + '/' + pathObj.base);
+      if (!isLoaded(fullPath)) {
+        if (fs.existsSync(fullPath)) {
+          fs.unlinkSync(fullPath);
+          warnTip('已删除本地 ' + fullPath);
+        }
+        downloadFile(host + data[keys[0]].url , fullPath);
+      } else {
+        if (loadingCount > 0) {
+          loadingCount--;
+        }
+      }
+    }
+    if (keys.length > 0) {
+      delete data[keys[0]];
+      keys.splice(0, 1);
+      process();
+    }
   }
+  process();
 }
 
 function downloadFile(mp4Url, filepath, callback) {
   if (loadingCount > loadingFileMax) {
     warnTip('下载数量' + loadingCount + '，已达上限，加入等待队列');
     si = setTimeout(function() {
-      getPageData(pageUrl);
+      reset();
+      getPageData(currentUrl);
     }, 1000 * 60 * 30);
     return;
   }
-  infoTip('正在下载【' + filepath + '】');
+  if (loadingCount <= loadingFileMax) {
+    loadingCount++;
+  }
+  infoTip(loadingCount + ' 正在下载【' + filepath + '】');
   var file = fs.createWriteStream(filepath);
 
   try {
@@ -134,38 +170,39 @@ function downloadFile(mp4Url, filepath, callback) {
       }).on('end', function() {
         file.end();
         successTip(filepath + '下载完成');
-        writeLog(filepath);
+        writeLog(filepath, 'file');
+        if (loadingCount > 0) {
+          loadingCount--;
+        }
+        callback && callback();
       }).on('error', function() {
         errorTip('下载 ' + mp4Url + ' 时，发生异常');
       });
     });
-    if (loadingCount <= loadingFileMax) {
-      loadingCount++;
-    }
   } catch (e) {
     errorTip('网络异常');
   }
 }
 
-function writeLog(fileName) {
+function writeLog(fileName, type) {
   // 记录日志
   try {
-    var existLogs = fs.readFileSync( logsFile, 'utf-8') ? JSON.parse(fs.readFileSync( logsFile)) : null;
+    var existLogs = fs.readFileSync( type === 'file' ? loadedFilesLogs: loadedDirLogs, 'utf-8') ? JSON.parse(fs.readFileSync( type === 'file' ? loadedFilesLogs: loadedDirLogs)) : null;
     if(!existLogs) {
       existLogs = [];
     }
     if (existLogs && existLogs.indexOf(fileName) < 0) {
       existLogs.push(fileName);
     }
-    fs.writeFileSync(logsFile, JSON.stringify(existLogs));
+    fs.writeFileSync(type === 'file' ? loadedFilesLogs: loadedDirLogs, JSON.stringify(existLogs));
     successTip('写入日志成功');
   } catch (e) {
     errorTip('写入日志失败');
   }
 }
 
-function isLoaded(fullPath) {
-  var existLogs = fs.readFileSync( logsFile, 'utf-8') ? JSON.parse(fs.readFileSync( logsFile)) : null;
+function isLoaded(fullPath, type) {
+  var existLogs = fs.readFileSync( type === 'file' ? loadedFilesLogs: loadedDirLogs, 'utf-8') ? JSON.parse(fs.readFileSync( type === 'file' ? loadedFilesLogs: loadedDirLogs)) : null;
   if(!existLogs) {
     return false;
   }
@@ -176,21 +213,38 @@ function isLoaded(fullPath) {
   }
 }
 
-function getPageData(url, parent) {
+function reset(){
   // 初始化变量
+  // hasWait = false;
   k = 0;
   loadingCount = 0;
   if (si) {
     clearTimeout(si);
-    si = null;
   }
-  infoTip('准备抓取【' + (host + urlencode.decode(url)) + '】的数据');
+  si = null;
+}
+
+function getPageData(url, parent) {
+  if (k > kMax) {
+    // hasWait = true;
+    warnTip('任务数量' + k + '，已达上限，加入等待队列');
+    si = setTimeout(function() {
+      reset();
+      getPageData(currentUrl);
+    }, 1000 * 30 * 1); // 30m后再处理这条请求
+    return;
+  }
   var resources = {};
+  if (k < kMax) {
+    k++;
+  }
+  currentUrl = url;
+  infoTip('准备抓取【' + (host + urlencode.decode(url)) + '】的数据');
   download(host + url, function(data) {
     if (data) {
-      successTip('抓取成功');
+      // successTip('抓取成功');
       const $ = cheerio.load(data);
-      infoTip('开始解析');
+      // infoTip('开始解析');
       $('a').each(function (k, v) {
         // 过滤不相关的链接
         if ($(v).text() != '[To Parent Directory]') {
@@ -201,7 +255,7 @@ function getPageData(url, parent) {
           }
         }
       });
-      successTip('解析成功！');
+      // successTip('解析成功！');
       getPageDataSuccess(resources);
     } else {
       errorTip('抓取失败');
