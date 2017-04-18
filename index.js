@@ -174,6 +174,10 @@ function downloadFile(mp4Url, filepath, callback) {
         if (loadingCount > 0) {
           loadingCount--;
         }
+        if (loadingCount <= 0) {
+          reset();
+          getPageData(pageUrl);
+        }
         callback && callback();
       }).on('error', function() {
         errorTip('下载 ' + mp4Url + ' 时，发生异常');
