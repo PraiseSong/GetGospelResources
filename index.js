@@ -44,16 +44,26 @@ function download(url, callback) {
 }
 
 var k = 0;
+var loadingCount = 0;
+var si = null;// 轮询查询
 function getPageDataSuccess(data) {
-  infoTip('当前的数据结构：');
-  infoTip(JSON.stringify(data, null, '\t'));
+  if (k > 3) {
+    warnTip('任务数量' + k + '，已达上限，加入等待队列');
+    si = setTimeout(function() {
+      getPageData(pageUrl);
+    }, 1000 * 60 * 15);
+    return;
+  }
+
+  // infoTip('当前的数据结构：');
+  // infoTip(JSON.stringify(data, null, '\t'));
   infoTip('获取到以下资源：');
   for (let i in data) {
       (function (index){
         var pathObj = path.parse(data[index].url);
         var dirName = urlencode.decode(pathObj.base, 'utf-8');
         var fullPath;
-        // 是个目录git init
+        // 是个目录
         if (!pathObj.ext) {
           resultData.dirs.push(data[index]);
           fullPath = resourcesDir + (data[index].parent ?  '/' + data[index].parent : '') + '/' + dirName;
@@ -64,10 +74,12 @@ function getPageDataSuccess(data) {
                   infoTip('开始获取该文件夹中的数据...');
                   getPageData(data[index].url, (data[index].parent ? data[index].parent + '/' : '') + dirName);
                 });
+                k++;
               } else {
                   warnTip('' + k + '：文件夹：【' + (data[index].parent ? data[index].parent : '') + '/' + dirName + '】已存在');
                   infoTip('开始获取该文件夹中的数据...');
                   getPageData(data[index].url, (data[index].parent ? data[index].parent + '/' : '') + dirName);
+                k--;
               }
           });
         } else {
@@ -76,35 +88,50 @@ function getPageDataSuccess(data) {
           if (!isLoaded(fullPath)) {
             fs.exists(fullPath, (exists) => {
                 if (exists) {
-                      // 如果本地有历史文件就删除
-                      fs.unlink(fullPath, () => {
-                          warnTip('已删除本地 ' + fullPath);
-                          downloadFile(host + data[index].url , fullPath);
-                      });
-                } else {
+                  // 如果本地有历史文件就删除
+                  fs.unlink(fullPath, () => {
+                      warnTip('已删除本地 ' + fullPath);
                       downloadFile(host + data[index].url , fullPath);
+                  });
+                } else {
+                  downloadFile(host + data[index].url , fullPath);
                 }
             });
+            k++;
+          } else {
+            loadingCount--;
+            k--;
           }
         }
       })(i);
-      k++;
   }
 }
 
 function downloadFile(mp4Url, filepath, callback) {
+  if (loadingCount > 8) {
+    warnTip('下载数量' + loadingCount + '，已达上限，加入等待队列');
+    si = setTimeout(function() {
+      getPageData(pageUrl);
+    }, 1000 * 60 * 30);
+    return;
+  }
   infoTip('正在下载【' + filepath + '】');
   var file = fs.createWriteStream(filepath);
 
-  https.get(mp4Url, function(res) {
-    res.on('data', function(data) {
-      file.write(data);
-    }).on('end', function() {
-      file.end();
-      successTip(filepath + '下载完成');
-      writeLog(filepath);
+  try {
+    https.get(mp4Url, function(res) {
+      res.on('data', function(data) {
+        file.write(data);
+      }).on('end', function() {
+        file.end();
+        successTip(filepath + '下载完成');
+        writeLog(filepath);
+      });
     });
-  });
+    loadingCount++;
+  } catch (e) {
+    errorTip('网络异常');
+  }
 }
 
 function writeLog(fileName) {
@@ -137,6 +164,13 @@ function isLoaded(fullPath) {
 }
 
 function getPageData(url, parent) {
+  // 初始化变量
+  k = 0;
+  loadingCount = 0;
+  if (si) {
+    clearTimeout(si);
+    si = null;
+  }
   infoTip('准备抓取【' + (host + urlencode.decode(url)) + '】的数据');
   var resources = {};
   download(host + url, function(data) {
