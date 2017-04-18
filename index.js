@@ -126,6 +126,9 @@ function getPageDataSuccess(data) {
       getPageData(data[keys[0]].url, (data[keys[0]].parent ? data[keys[0]].parent + '/' : '') + dirName);
     } else {
       resultData.files.push(data[keys[0]]);
+      if (!data[keys[0]].parent) {
+        data[keys[0]].parent = pathObj.dir.replace(pageUrl, '');
+      }
       fullPath = urlencode.decode(resourcesDir + (data[keys[0]].parent ?  '/' + data[keys[0]].parent : '') + '/' + pathObj.base);
       if (!isLoaded(fullPath)) {
         if (fs.existsSync(fullPath)) {
