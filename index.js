@@ -44,10 +44,12 @@ function download(url, callback) {
 }
 
 var k = 0;
+var kMax = 4; // 允许同时下载目录的最大数量
 var loadingCount = 0;
+var loadingFileMax = 8; // 允许同时下载文件的最大数量
 var si = null;// 轮询查询
 function getPageDataSuccess(data) {
-  if (k > 3) {
+  if (k > kMax) {
     warnTip('任务数量' + k + '，已达上限，加入等待队列');
     si = setTimeout(function() {
       getPageData(pageUrl);
@@ -74,14 +76,15 @@ function getPageDataSuccess(data) {
                   infoTip('开始获取该文件夹中的数据...');
                   getPageData(data[index].url, (data[index].parent ? data[index].parent + '/' : '') + dirName);
                 });
-                k++;
               } else {
-                  warnTip('' + k + '：文件夹：【' + (data[index].parent ? data[index].parent : '') + '/' + dirName + '】已存在');
-                  infoTip('开始获取该文件夹中的数据...');
-                  getPageData(data[index].url, (data[index].parent ? data[index].parent + '/' : '') + dirName);
-                k--;
+                warnTip('' + k + '：文件夹：【' + (data[index].parent ? data[index].parent : '') + '/' + dirName + '】已存在');
+                infoTip('开始获取该文件夹中的数据...');
+                getPageData(data[index].url, (data[index].parent ? data[index].parent + '/' : '') + dirName);
               }
           });
+          if (k <= kMax) {
+            k++;
+          }
         } else {
           resultData.files.push(data[index]);
           fullPath = urlencode.decode(resourcesDir + (data[index].parent ?  '/' + data[index].parent : '') + '/' + pathObj.base);
@@ -97,10 +100,16 @@ function getPageDataSuccess(data) {
                   downloadFile(host + data[index].url , fullPath);
                 }
             });
-            k++;
+            if (k <= kMax) {
+              k++;
+            }
           } else {
-            loadingCount--;
-            k--;
+            if (loadingCount > 0) {
+              loadingCount--;
+            }
+            if (k > 0) {
+              k--;
+            }
           }
         }
       })(i);
@@ -108,7 +117,7 @@ function getPageDataSuccess(data) {
 }
 
 function downloadFile(mp4Url, filepath, callback) {
-  if (loadingCount > 8) {
+  if (loadingCount > loadingFileMax) {
     warnTip('下载数量' + loadingCount + '，已达上限，加入等待队列');
     si = setTimeout(function() {
       getPageData(pageUrl);
@@ -126,9 +135,13 @@ function downloadFile(mp4Url, filepath, callback) {
         file.end();
         successTip(filepath + '下载完成');
         writeLog(filepath);
+      }).on('error', function() {
+        errorTip('下载 ' + mp4Url + ' 时，发生异常');
       });
     });
-    loadingCount++;
+    if (loadingCount <= loadingFileMax) {
+      loadingCount++;
+    }
   } catch (e) {
     errorTip('网络异常');
   }
