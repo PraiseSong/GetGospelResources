@@ -18,7 +18,7 @@ var host = 'https://downs.fuyin.tv';
 // 福音证道
 var pageUrl = '/pcdown/06%E7%A6%8F%E9%9F%B3%E8%AF%81%E9%81%93/';
 // 存储的目录
-var resourcesDir = './resources';//'/Volumes/MY PASSPORT/Video-from-fuyinTV-with-nodejs';
+var resourcesDir = '/Volumes/MY PASSPORT/Video-from-fuyinTV-with-nodejs';//'./resources';
 // 解析后的数据
 var resultData = {
   files: [],
@@ -105,6 +105,16 @@ function getPageDataSuccess(data) {
     var pathObj = path.parse(data[keys[0]].url);
     var dirName = urlencode.decode(pathObj.base, 'utf-8');
     var fullPath;
+    // 处理父目录不存在的问题
+    if (!data[keys[0]].parent) {
+      if (pathObj.dir.charAt(pathObj.dir.length - 1) !== '/') {
+        pathObj.dir += '/';
+      }
+      data[keys[0]].parent = urlencode.decode(pathObj.dir.replace(pageUrl, ''));
+    }
+    if (data[keys[0]].parent && data[keys[0]].parent.charAt(0) === '/') {
+      data[keys[0]].parent = data[keys[0]].parent.substr(1);
+    }
     // 是个目录
     if (!pathObj.ext) {
       resultData.dirs.push(data[keys[0]]);
@@ -126,11 +136,8 @@ function getPageDataSuccess(data) {
       getPageData(data[keys[0]].url, (data[keys[0]].parent ? data[keys[0]].parent + '/' : '') + dirName);
     } else {
       resultData.files.push(data[keys[0]]);
-      if (!data[keys[0]].parent) {
-        data[keys[0]].parent = pathObj.dir.replace(pageUrl, '');
-      }
       fullPath = urlencode.decode(resourcesDir + (data[keys[0]].parent ?  '/' + data[keys[0]].parent : '') + '/' + pathObj.base);
-      if (!isLoaded(fullPath)) {
+      if (!isLoaded(fullPath, 'file')) {
         if (fs.existsSync(fullPath)) {
           fs.unlinkSync(fullPath);
           warnTip('已删除本地 ' + fullPath);
@@ -167,7 +174,7 @@ function downloadFile(mp4Url, filepath, callback) {
   var file = fs.createWriteStream(filepath);
 
   try {
-    https.get(mp4Url, function(res) {
+    var req = https.get(mp4Url, function(res) {
       res.on('data', function(data) {
         file.write(data);
       }).on('end', function() {
@@ -182,9 +189,10 @@ function downloadFile(mp4Url, filepath, callback) {
           getPageData(pageUrl);
         }
         callback && callback();
-      }).on('error', function() {
-        errorTip('下载 ' + mp4Url + ' 时，发生异常');
       });
+    });
+    req.on('error', (error) => {
+        console.error(error);
     });
   } catch (e) {
     errorTip('网络异常');
@@ -283,3 +291,10 @@ function errorTip(text){
   console.log(text.red + '\n');
 }
 getPageData(pageUrl);
+
+process.on('uncaughtException', function (err) {
+  console.error(err.stack);
+  console.log("Node NOT Exiting...");
+  reset();
+  getPageData(pageUrl);
+});
