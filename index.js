@@ -164,7 +164,7 @@ function downloadFile(mp4Url, filepath, callback) {
     si = setTimeout(function() {
       reset();
       getPageData(currentUrl);
-    }, 1000 * 60 * 30);
+    }, 1000 * 60 * 10 );
     return;
   }
   if (loadingCount <= loadingFileMax) {
@@ -273,7 +273,11 @@ function getPageData(url, parent) {
       // successTip('解析成功！');
       getPageDataSuccess(resources);
     } else {
-      errorTip('抓取失败');
+      errorTip('抓取失败，3秒后自动重新抓取');
+      setTimeout(function() {
+        reset();
+        getPageData(pageUrl);
+      }, 3000);
     }
   });
 }
